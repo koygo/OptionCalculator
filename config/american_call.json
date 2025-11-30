@@ -3,10 +3,10 @@
   "option_type": "call",
   "underlying_price": 100.0,
   "strike_price": 100.0,
-  "time_to_maturity": 0.75,
+  "time_to_maturity": 1,
   "volatility": 0.3,
   "risk_free_rate": 0.05,
-  "dividend_yield": 0.03,
-  "num_simulations": 50000,
+  "dividend_yield": 0.0,
+  "num_simulations": 10000,
   "num_steps": 100
 }

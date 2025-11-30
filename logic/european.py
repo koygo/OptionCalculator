@@ -25,7 +25,7 @@ class EuropeanOption(Option):
     r : float
         Risk-free rate
     sigma : 
-        Volatility of the underlying
+        Volatility of the underlying asset
     q : float, optional
         Continuous dividend yield (default = 0)
     option_type :   str, optional
