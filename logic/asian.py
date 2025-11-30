@@ -1,151 +1,155 @@
-# Import necessary tools for Monte Carlo simulations
+"""
+Asian Option implementation with path-dependent averaging.
+"""
 from .option import Option
+import numpy as np
+
 
 class AsianOption(Option):
+    """
+    Asian option with payoff based on average underlying price.
 
-    '''
-    Represents an Asian option priced via Monte Carlo simulation.
+    Supports both arithmetic and geometric averaging. Greeks are calculated
+    using finite differences with Common Random Numbers (CRN).
 
-    Parameters
+    Attributes
     ----------
-    S : float
-        Current underlying price.
-    K : float
-        Strike price.
-    T : float
-        Time to maturity (in years).
-    r : float
-        Risk-free interest rate.
-    sigma : float
-        Volatility of the underlying.
-    q : float, optional
-        Dividend yield (default: 0).
-    option_type : str, optional
-        "call" or "put" (default: "call").
-    average_type : str, optional
-        "arithmetic" or "geometric" averaging (default: "arithmetic").
-    num_simulations : int, optional
-        Number of Monte Carlo paths (default: 10,000).
-    num_steps : int, optional
-        Number of time steps per path (default: 252).
-    '''
+    average_type : str
+        'arithmetic' or 'geometric' averaging method
+    """
 
-    def __init__(self,  S, K, T, r, sigma, q=0, option_type='call', average_type='arithmetic', num_simulations=10000, num_steps=252):
-        # Store option parameters
+    def __init__(self, S, K, T, r, sigma, q=0, option_type='call',
+                 average_type='arithmetic', num_simulations=10000, num_steps=252):
+        """
+        Initialize Asian option.
+
+        Parameters
+        ----------
+        average_type : str, optional
+            'arithmetic' or 'geometric' (default: 'arithmetic')
+        """
         super().__init__(S, K, T, r, sigma, q, option_type, num_simulations, num_steps)
         self.average_type = average_type
 
-    def price(self): # Simple wrapper for pricing function
-        '''
-        Computes the price of an Asian option using the Monte Carlo engine (initialised earlier).
-        Returns float : estimated option price.
-        '''
-        return self.mc_engine.price_asian(self.S, self.K, self.T, self.r, self.sigma, self.q, self.option_type, self.average_type)
-    
-    '''
-    -----------------------------------------------------------
-    Greeks (finite differences)
-    Each Greek re-runs Monte Carlo with a bumped parameter
-    Using a fixed seed ensures path consistency (reduces variance)
-    Using central finite differences for better accuracy
-    --------------------------------------------------------------
-    '''
+    def price(self):
+        """Calculate Asian option price using Monte Carlo."""
+        return self.mc_engine.price_asian(
+            self.S, self.K, self.T, self.r, self.sigma, self.q,
+            self.option_type, self.average_type
+        )
 
-    def delta(self, bump=0.01):
-        '''
-        Delta = dPrice/dS: sensitivity to underlying price.
-        '''
+    # Helper Methods
 
-        # Bumped underlying prices
-        S_up = self.S + bump
-        S_down = self.S - bump
+    def _generate_paths_for_greek(self, Z, S0, r, sigma):
+        """Generate price paths for Greek calculations with CRN."""
+        dt = self.T / self.num_steps
+        num_sims = Z.shape[0]
+        paths = np.zeros((num_sims, self.num_steps + 1))
+        paths[:, 0] = S0
 
-        # Price options for bumped underlying prices (mc engines declared in Option parent class)
-        price_up = self.mc_up.price_asian(S_up, self.K, self.T, self.r, self.sigma, self.q,
-                                      self.option_type, self.average_type)
-        price_down = self.mc_down.price_asian(S_down, self.K, self.T, self.r, self.sigma, self.q,
-                                          self.option_type, self.average_type)
+        for t in range(1, self.num_steps + 1):
+            paths[:, t] = paths[:, t - 1] * np.exp(
+                (r - self.q - 0.5 * sigma ** 2) * dt +
+                sigma * np.sqrt(dt) * Z[:, t - 1]
+            )
+        return paths
 
-        # Approximate delta using central finite difference
+    def _price_from_paths(self, paths):
+        """Calculate Asian option price from generated paths."""
+        # Calculate average
+        if self.average_type == 'arithmetic':
+            avg_prices = np.mean(paths, axis=1)
+        else:  # geometric
+            avg_prices = np.exp(np.mean(np.log(paths), axis=1))
+
+        # Calculate payoff
+        if self.option_type == 'call':
+            payoffs = np.maximum(avg_prices - self.K, 0)
+        else:
+            payoffs = np.maximum(self.K - avg_prices, 0)
+
+        return np.exp(-self.r * self.T) * np.mean(payoffs)
+
+    # Greeks
+
+    def delta(self, bump=1.0, num_sims=100000):
+        """Calculate Delta: ∂V/∂S."""
+        np.random.seed(42)
+        Z = np.random.standard_normal((num_sims, self.num_steps))
+
+        paths_up = self._generate_paths_for_greek(Z, self.S + bump, self.r, self.sigma)
+        paths_down = self._generate_paths_for_greek(Z, self.S - bump, self.r, self.sigma)
+
+        price_up = self._price_from_paths(paths_up)
+        price_down = self._price_from_paths(paths_down)
+
         return (price_up - price_down) / (2 * bump)
-    
-    def gamma(self, bump=0.01):
-        '''
-        Gamma = d²Price/dS²: sensitivity of delta to underlying price.
-        '''
-        # Bumped underlying prices
 
-        S_up = self.S + bump
-        S_down = self.S - bump
+    def gamma(self, bump=1.0, num_sims=100000):
+        """Calculate Gamma: ∂²V/∂S²."""
+        np.random.seed(42)
+        Z = np.random.standard_normal((num_sims, self.num_steps))
 
-        # Price options for bumped and original underlying prices
-        price_up = self.mc_up.price_asian(S_up, self.K, self.T, self.r, self.sigma, self.q,
-                                      self.option_type, self.average_type)
-        price_center = self.mc_center.price_asian(self.S, self.K, self.T, self.r, self.sigma, self.q,
-                                              self.option_type, self.average_type)
-        price_down = self.mc_down.price_asian(S_down, self.K, self.T, self.r, self.sigma, self.q,
-                                          self.option_type, self.average_type)
-        
-        # Approximate gamma using central finite difference
-        return (price_up - 2 * price_center + price_down) / (bump ** 2)
+        paths_up = self._generate_paths_for_greek(Z, self.S + bump, self.r, self.sigma)
+        paths_center = self._generate_paths_for_greek(Z, self.S, self.r, self.sigma)
+        paths_down = self._generate_paths_for_greek(Z, self.S - bump, self.r, self.sigma)
 
-    def vega(self, bump=0.01):
-        '''
-        Vega = dPrice/dSigma: sensitivity to volatility.
-        '''
+        price_up = self._price_from_paths(paths_up)
+        price_center = self._price_from_paths(paths_center)
+        price_down = self._price_from_paths(paths_down)
 
-        # Bumped volatilities
-        sigma_up = self.sigma + bump
-        sigma_down = self.sigma - bump
+        gamma = (price_up - 2 * price_center + price_down) / (bump ** 2)
+        return max(gamma, 1e-6)
 
-        # Price options for bumped volatilities
-        price_up = self.mc_up.price_asian(self.S, self.K, self.T, self.r, sigma_up, self.q,
-                                      self.option_type, self.average_type)
-        price_down = self.mc_down.price_asian(self.S, self.K, self.T, self.r, sigma_down, self.q,
-                                          self.option_type, self.average_type)
-        
-        # Approximate vega using central finite difference (divide by 100 to express per 1% change in volatility)
-        return (price_up - price_down) / (2 * bump) / 100
+    def vega(self, bump=0.01, num_sims=100000):
+        """Calculate Vega: ∂V/∂σ."""
+        np.random.seed(42)
+        Z = np.random.standard_normal((num_sims, self.num_steps))
 
-    def theta(self, bump=1/365):
-        '''
-        Theta = dPrice/dT: sensitivity to time to maturity.
-        '''
+        paths_up = self._generate_paths_for_greek(Z, self.S, self.r, self.sigma + bump)
+        paths_down = self._generate_paths_for_greek(Z, self.S, self.r, self.sigma - bump)
 
-        # Bumped time to maturity (ensure non-negative)
-        T_down = max(self.T - bump, 0)
+        price_up = self._price_from_paths(paths_up)
+        price_down = self._price_from_paths(paths_down)
 
-        # Price options for original and bumped time to maturity
-        price_center = self.mc_center.price_asian(self.S, self.K, self.T, self.r, self.sigma, self.q,
-                                              self.option_type, self.average_type)
-        price_down = self.mc_down.price_asian(self.S, self.K, T_down, self.r, self.sigma, self.q,
-                                          self.option_type, self.average_type)
-        
-        # Approximate theta using finite difference (negative sign to reflect decrease in time)
-        return (price_down - price_center) / bump
+        return (price_up - price_down) / (2 * bump)
 
-    def rho(self, bump=0.01):
-        '''
-        Rho = dPrice/dr: sensitivity to risk-free interest rate.
-        '''
+    def theta(self, bump=1 / 365, num_sims=100000):
+        """Calculate Theta: ∂V/∂t."""
+        from .monte_carlo import MonteCarloEngine
 
-        # Bumped interest rates
-        r_up = self.r + bump
-        r_down = self.r - bump
+        np.random.seed(42)
+        temp_engine_current = MonteCarloEngine(num_sims, self.num_steps, seed=42)
+        price_current = temp_engine_current.price_asian(
+            self.S, self.K, self.T, self.r, self.sigma, self.q,
+            self.option_type, self.average_type
+        )
 
-        # Price options for bumped interest rates
-        price_up = self.mc_up.price_asian(self.S, self.K, self.T, r_up, self.sigma, self.q,
-                                      self.option_type, self.average_type)
-        price_down = self.mc_down.price_asian(self.S, self.K, self.T, r_down, self.sigma, self.q,
-                                          self.option_type, self.average_type)
+        np.random.seed(42)
+        temp_engine_minus = MonteCarloEngine(num_sims, self.num_steps, seed=42)
+        T_minus = max(self.T - bump, 0)
+        price_minus = temp_engine_minus.price_asian(
+            self.S, self.K, T_minus, self.r, self.sigma, self.q,
+            self.option_type, self.average_type
+        )
 
-        # Approximate rho using central finite difference (divide by 100 to express per 1% change in rate)
-        return (price_up - price_down) / (2 * bump) / 100
-    
+        return (price_minus - price_current) / bump
+
+    def rho(self, bump=0.01, num_sims=100000):
+        """Calculate Rho: ∂V/∂r."""
+        np.random.seed(42)
+        Z = np.random.standard_normal((num_sims, self.num_steps))
+
+        paths_up = self._generate_paths_for_greek(Z, self.S, self.r + bump, self.sigma)
+        paths_down = self._generate_paths_for_greek(Z, self.S, self.r - bump, self.sigma)
+
+        price_up = self._price_from_paths(paths_up)
+        price_down = self._price_from_paths(paths_down)
+
+        return (price_up - price_down) / (2 * bump)
+
     def get_all_greeks(self):
-        '''
-        Computes all Greeks and returns them in a dictionary.
-        '''
+        """Calculate all Greeks and return as dictionary."""
         return {
             'delta': self.delta(),
             'gamma': self.gamma(),

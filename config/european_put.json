@@ -1,6 +1,6 @@
 {
   "option_style": "european",
-  "option_type": "call",
+  "option_type": "put",
   "underlying_price": 100.0,
   "strike_price": 100.0,
   "time_to_maturity": 1.0,

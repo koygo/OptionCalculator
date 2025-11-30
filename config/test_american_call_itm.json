@@ -1,12 +1,12 @@
 {
-  "option_style": "european",
+  "option_style": "american",
   "option_type": "call",
-  "underlying_price": 100.0,
+  "underlying_price": 110.0,
   "strike_price": 100.0,
-  "time_to_maturity": 1.0,
-  "volatility": 0.3,
+  "time_to_maturity": 0.5,
+  "volatility": 0.2,
   "risk_free_rate": 0.05,
   "dividend_yield": 0.0,
   "num_simulations": 10000,
-  "num_steps": 252
+  "num_steps": 100
 }

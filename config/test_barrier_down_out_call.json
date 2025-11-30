@@ -1,5 +1,5 @@
 {
-  "option_style": "european",
+  "option_style": "barrier",
   "option_type": "call",
   "underlying_price": 100.0,
   "strike_price": 100.0,
@@ -7,6 +7,8 @@
   "volatility": 0.3,
   "risk_free_rate": 0.05,
   "dividend_yield": 0.0,
+  "barrier_type": "down-and-out",
+  "barrier_level": 90.0,
   "num_simulations": 10000,
   "num_steps": 252
 }

@@ -58,8 +58,8 @@ class OptionCalculator:
                 raise ValueError(f"Invalid barrier option parameters: {error_msg}")
 
             self.option = BarrierOption(S, K, T, r, sigma, q, option_type,
-                                       barrier_type, barrier_level,
-                                       num_simulations, num_steps)
+                                        num_simulations, num_steps,
+                                        barrier_type, barrier_level)
 
         else:
             raise ValueError(f"Invalid option style: {option_style}. "
